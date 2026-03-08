@@ -22,7 +22,9 @@ export MCW_ROOT?=$(PWD)/mgmt_core_wrapper
 SIM?=RTL
 
 # Install lite version of caravel, (1): caravel-lite, (0): caravel
-CARAVEL_LITE?=1
+# Default to full caravel because integration targets (set_user_id/ship/final)
+# require assets not present in caravel-lite.
+CARAVEL_LITE?=0
 
 # PDK switch varient
 export PDK?=sky130A
@@ -36,6 +38,16 @@ USER_ARGS = -u $$(id -u $$USER):$$(id -g $$USER)
 ifeq ($(ROOTLESS), 1)
 	USER_ARGS =
 endif
+
+# Keep cocotb docker platform optional for portability across host OS/arch.
+# Users/CI can set COCOTB_DOCKER_PLATFORM explicitly when needed, e.g.:
+#   COCOTB_DOCKER_PLATFORM=linux/amd64
+# By default, docker decides the best available image/platform.
+COCOTB_DOCKER_PLATFORM ?=
+COCOTB_DOCKER_PLATFORM_ARG := $(if $(strip $(COCOTB_DOCKER_PLATFORM)),--platform=$(COCOTB_DOCKER_PLATFORM),)
+COCOTB_DOCKER_PLATFORM_ENV := $(if $(strip $(COCOTB_DOCKER_PLATFORM)),DOCKER_DEFAULT_PLATFORM=$(COCOTB_DOCKER_PLATFORM),)
+COCOTB_REQUIRE_RUNTIME ?= 1
+
 export OPENLANE_ROOT?=$(PWD)/dependencies/openlane_src
 export PDK_ROOT?=$(PWD)/dependencies/pdks
 export DISABLE_LVS?=0
@@ -93,6 +105,117 @@ ifeq ($(PDK),gf180mcuD)
 endif
 
 # Include Caravel Makefile Targets
+.PHONY: set_user_id
+set_user_id: check-caravel
+	@if [ -z "$(USER_ID)" ]; then \
+		echo "USER_ID is undefined, please export it before running make set_user_id"; \
+		exit 1; \
+	fi
+	@if [ -f "$(CARAVEL_ROOT)/mag/user_id_programming.mag" ] && [ -f "$(CARAVEL_ROOT)/mag/user_id_textblock.mag" ]; then \
+		export CARAVEL_ROOT=$(CARAVEL_ROOT) && export MPW_TAG=$(MPW_TAG) && $(MAKE) -f $(CARAVEL_ROOT)/Makefile set_user_id; \
+	else \
+		echo "WARNING: Missing $(CARAVEL_ROOT)/mag/user_id_programming.mag or user_id_textblock.mag."; \
+		if [ ! -d "$(CARAVEL_ROOT)/maglef" ]; then \
+			echo "Detected caravel-lite checkout at $(CARAVEL_ROOT)."; \
+			echo "For full integration flow (ship/fill/final), reinstall full caravel:"; \
+			echo "  make uninstall && CARAVEL_LITE=0 make install"; \
+		fi; \
+		echo "Applying USER_ID to local RTL only (compatibility fallback)."; \
+		mkdir -p ./signoff/build ./verilog/rtl ./verilog/gl; \
+		cp $(CARAVEL_ROOT)/verilog/rtl/caravel_core.v ./verilog/rtl/caravel_core.v; \
+		if [ -f "$(CARAVEL_ROOT)/verilog/gl/user_id_programming.v" ]; then \
+			cp $(CARAVEL_ROOT)/verilog/gl/user_id_programming.v ./verilog/gl/user_id_programming.v; \
+		fi; \
+		sed -i -E "s/(parameter USER_PROJECT_ID = 32'h)[0-9A-F]+;/\\1$(USER_ID);/" ./verilog/rtl/caravel_core.v; \
+		echo "Set user ID completed (RTL fallback)." | tee ./signoff/build/set_user_id.out; \
+	fi
+
+.PHONY: ship
+ship: check-caravel
+	@if [ ! -d "$(CARAVEL_ROOT)/maglef" ]; then \
+		echo "ERROR: Detected caravel-lite checkout at $(CARAVEL_ROOT)."; \
+		echo "This project's integration flow requires full caravel."; \
+		echo "Fix: make uninstall && CARAVEL_LITE=0 make install"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(UPRJ_ROOT)/mag/caravel_core.mag" ] && [ ! -f "$(UPRJ_ROOT)/mag/caravel_core.mag.gz" ]; then \
+		mkdir -p "$(UPRJ_ROOT)/mag"; \
+		if [ -f "$(CARAVEL_ROOT)/mag/caravel_core.mag" ]; then \
+			cp "$(CARAVEL_ROOT)/mag/caravel_core.mag" "$(UPRJ_ROOT)/mag/caravel_core.mag"; \
+		elif [ -f "$(CARAVEL_ROOT)/mag/caravel_core.mag.gz" ]; then \
+			cp "$(CARAVEL_ROOT)/mag/caravel_core.mag.gz" "$(UPRJ_ROOT)/mag/caravel_core.mag.gz"; \
+		fi; \
+	fi
+	@if { [ ! -f "$(CARAVEL_ROOT)/maglef/simple_por.mag" ] && [ ! -f "$(CARAVEL_ROOT)/maglef/simple_por.mag.gz" ]; } || \
+	    { [ ! -f "$(CARAVEL_ROOT)/mag/caravel.mag" ] && [ ! -f "$(CARAVEL_ROOT)/mag/caravel.mag.gz" ]; } || \
+	    { [ ! -f "$(UPRJ_ROOT)/mag/caravel_core.mag" ] && [ ! -f "$(UPRJ_ROOT)/mag/caravel_core.mag.gz" ]; }; then \
+		echo "ERROR: Required MAG/MAGLEF sources for 'ship' are missing."; \
+		echo "Missing one or more of: caravel/maglef/simple_por.mag, caravel/mag/caravel.mag, mag/caravel_core.mag."; \
+		echo "If you are on caravel-lite, fix with: make uninstall && CARAVEL_LITE=0 make install"; \
+		exit 1; \
+	fi
+	export CARAVEL_ROOT=$(CARAVEL_ROOT) && export MPW_TAG=$(MPW_TAG) && $(MAKE) -f $(CARAVEL_ROOT)/Makefile ship
+
+.PHONY: final
+final: check-caravel
+	@if [ -z "$(USER_ID)" ]; then \
+		echo "USER_ID is undefined, please export it before running make final"; \
+		exit 1; \
+	fi
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "PROJECT is undefined, please export it before running make final"; \
+		exit 1; \
+	fi
+	@echo "INFO: Running ship prerequisite for final..."
+	@$(MAKE) ship
+	@echo "INFO: Running generate_fill prerequisite for final..."
+	@export CARAVEL_ROOT=$(CARAVEL_ROOT) && export MPW_TAG=$(MPW_TAG) && $(MAKE) -f $(CARAVEL_ROOT)/Makefile generate_fill
+	@if [ ! -f "$(UPRJ_ROOT)/gds/$(PROJECT).gds" ] || [ "$$(stat -c%s "$(UPRJ_ROOT)/gds/$(PROJECT).gds" 2>/dev/null || echo 0)" -lt 1000000 ]; then \
+		echo "ERROR: $(UPRJ_ROOT)/gds/$(PROJECT).gds missing/invalid after ship"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds" ] || [ "$$(stat -c%s "$(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds" 2>/dev/null || echo 0)" -lt 1000000 ]; then \
+		echo "ERROR: $(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds missing/invalid after generate_fill"; \
+		exit 1; \
+	fi
+	@rm -f "$(UPRJ_ROOT)/gds/caravel_$(USER_ID).gds"
+	@cp -f "$(UPRJ_ROOT)/gds/$(PROJECT).gds" "$(CARAVEL_ROOT)/gds/$(PROJECT).gds"
+	@cp -f "$(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds" "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds"
+	@export CARAVEL_ROOT=$(CARAVEL_ROOT) && \
+		export MPW_TAG=$(MPW_TAG) && \
+		export PDK=$(PDK) && \
+		export PDK_ROOT=$(PDK_ROOT) && \
+		export MCW_ROOT=$(MCW_ROOT) && \
+		python3 $(CARAVEL_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
+	@cp -f "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" "$(UPRJ_ROOT)/gds/caravel_$(USER_ID).gds"
+
+.PHONY: final-fast
+final-fast: check-caravel
+	@if [ -z "$(USER_ID)" ]; then \
+		echo "USER_ID is undefined, please export it before running make final-fast"; \
+		exit 1; \
+	fi
+	@if [ -z "$(PROJECT)" ]; then \
+		echo "PROJECT is undefined, please export it before running make final-fast"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(UPRJ_ROOT)/gds/$(PROJECT).gds" ] || [ ! -f "$(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds" ]; then \
+		echo "ERROR: Missing prerequisites. Run: vsdmake ship && vsdmake fill"; \
+		exit 1; \
+	fi
+	@cp -f "$(UPRJ_ROOT)/gds/$(PROJECT).gds" "$(CARAVEL_ROOT)/gds/$(PROJECT).gds"
+	@cp -f "$(UPRJ_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds" "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID)_fill_pattern.gds"
+	@rm -f "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" "$(UPRJ_ROOT)/gds/caravel_$(USER_ID).gds"
+	@export PDK=$(PDK) && \
+		export PDK_ROOT=$(PDK_ROOT) && \
+		export MCW_ROOT=$(MCW_ROOT) && \
+		python3 $(CARAVEL_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
+	@if [ "$$(stat -c%s "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" 2>/dev/null || echo 0)" -lt 1000000000 ]; then \
+		echo "ERROR: final GDS is too small/invalid at $(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds"; \
+		exit 1; \
+	fi
+	@cp -f "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" "$(UPRJ_ROOT)/gds/caravel_$(USER_ID).gds"
+
 .PHONY: % : check-caravel
 %:
 	export CARAVEL_ROOT=$(CARAVEL_ROOT) && export MPW_TAG=$(MPW_TAG) && $(MAKE) -f $(CARAVEL_ROOT)/Makefile $@
@@ -114,7 +237,7 @@ simenv:
 # Install cocotb docker
 .PHONY: simenv-cocotb
 simenv-cocotb:
-	docker pull efabless/dv:cocotb
+	docker pull $(COCOTB_DOCKER_PLATFORM_ARG) efabless/dv:cocotb
 
 .PHONY: setup
 setup: check_dependencies install check-env install_mcw openlane pdk-with-volare setup-timing-scripts setup-cocotb precheck
@@ -354,19 +477,43 @@ setup-cocotb-env:
 .PHONY: setup-cocotb
 setup-cocotb: install-caravel-cocotb setup-cocotb-env simenv-cocotb
 
+.PHONY: check-cocotb-runtime
+check-cocotb-runtime:
+	@if [ "$(COCOTB_REQUIRE_RUNTIME)" = "0" ]; then \
+		echo "WARNING: Skipping cocotb docker runtime precheck (COCOTB_REQUIRE_RUNTIME=0)."; \
+		exit 0; \
+	fi
+	@set -e; \
+	tmp_log=$$(mktemp); \
+	if $(COCOTB_DOCKER_PLATFORM_ENV) docker run --rm $(COCOTB_DOCKER_PLATFORM_ARG) --entrypoint /bin/sh efabless/dv:cocotb -c 'echo ok' >$$tmp_log 2>&1; then \
+		rm -f $$tmp_log; \
+	else \
+		echo "ERROR: efabless/dv:cocotb is not runnable on this host."; \
+		echo "Host arch: $$(uname -m)"; \
+		echo "Runtime probe output:"; \
+		cat $$tmp_log; \
+		rm -f $$tmp_log; \
+		echo "If your host is arm64 and only amd64 image is available, enable Docker x86 emulation or run in x86_64 environment."; \
+		echo "Optional overrides:"; \
+		echo "  COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-all-rtl"; \
+		echo "  COCOTB_DOCKER_PLATFORM=linux/arm64/v8 vsdmake cocotb-verify-all-rtl"; \
+		echo "  COCOTB_REQUIRE_RUNTIME=0 vsdmake cocotb-verify-all-rtl  (not recommended)"; \
+		exit 1; \
+	fi
+
 .PHONY: cocotb-verify-all-rtl
-cocotb-verify-all-rtl: 
-	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -tl user_proj_tests/user_proj_tests.yaml )
+cocotb-verify-all-rtl: check-cocotb-runtime
+	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(COCOTB_DOCKER_PLATFORM_ENV) $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -tl user_proj_tests/user_proj_tests.yaml )
 	
 .PHONY: cocotb-verify-all-gl
-cocotb-verify-all-gl:
-	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -tl user_proj_tests/user_proj_tests_gl.yaml -sim GL)
+cocotb-verify-all-gl: check-cocotb-runtime
+	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(COCOTB_DOCKER_PLATFORM_ENV) $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -tl user_proj_tests/user_proj_tests_gl.yaml -sim GL)
 
-$(cocotb-dv-targets-rtl): cocotb-verify-%-rtl: 
-	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -t $*  )
+$(cocotb-dv-targets-rtl): cocotb-verify-%-rtl: check-cocotb-runtime
+	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(COCOTB_DOCKER_PLATFORM_ENV) $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -t $*  )
 	
-$(cocotb-dv-targets-gl): cocotb-verify-%-gl:
-	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -t $* -sim GL)
+$(cocotb-dv-targets-gl): cocotb-verify-%-gl: check-cocotb-runtime
+	@(cd $(PROJECT_ROOT)/verilog/dv/cocotb && $(COCOTB_DOCKER_PLATFORM_ENV) $(PROJECT_ROOT)/venv-cocotb/bin/caravel_cocotb -t $* -sim GL)
 
 ./verilog/gl/user_project_wrapper.v:
 	$(error you don't have $@)
