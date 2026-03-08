@@ -1,4 +1,4 @@
-# VSD SCL180 SoC (Caravel User Project Flow)
+# VSD Sky130 SoC (Caravel User Project Flow)
 
 This repository is based on `caravel_user_project` and is set up so users can run the flow with `vsdmake`.
 
