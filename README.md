@@ -132,6 +132,15 @@ Notes:
 - `vsdmake fill` maps to `make generate_fill`.
 - Final integrated GDS: `gds/caravel_${USER_ID}.gds`
 
+View final GDS in KLayout:
+
+```bash
+klayout -e \
+  -nn $PWD/dependencies/pdks/sky130A/libs.tech/klayout/tech/sky130A.lyt \
+  -l  $PWD/dependencies/pdks/sky130A/libs.tech/klayout/tech/sky130A.lyp \
+  $PWD/gds/caravel_${USER_ID}.gds
+```
+
 ## 6) Verification
 
 RTL:
