@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    cat <<'EOF'
+Usage:
+  vsdmake <target> [make-args...]
+
+Examples:
+  vsdmake setup
+  vsdmake ship
+  vsdmake fill
+  vsdmake final
+  vsdmake cocotb-verify-counter_wb-gl
+  vsdmake -j4 user_project_wrapper
+
+Notes:
+  - "fill" is mapped to "generate_fill".
+  - All other targets/flags are passed directly to make.
+EOF
+}
+
+if [[ $# -eq 0 ]]; then
+    usage
+    exit 0
+fi
+
+if [[ "$1" == "-h" || "$1" == "--help" || "$1" == "help" ]]; then
+    usage
+    exit 0
+fi
+
+args=("$@")
+
+# Map the first non-flag token if it is "fill".
+for i in "${!args[@]}"; do
+    if [[ "${args[$i]}" != -* ]]; then
+        if [[ "${args[$i]}" == "fill" ]]; then
+            args[$i]="generate_fill"
+        fi
+        break
+    fi
+done
+
+exec make "${args[@]}"
