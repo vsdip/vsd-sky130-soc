@@ -166,6 +166,22 @@ docker run --rm --platform=linux/amd64 alpine uname -m
 
 If this fails with `exec format error` on arm64, enable amd64 emulation in Docker (or run cocotb on x86_64 host/CI).
 
+Common fix on Linux Docker engine:
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install amd64
+docker run --rm --platform=linux/amd64 alpine uname -m
+```
+
+Expected output of the second command: `x86_64`
+
+On Docker Desktop (Apple Silicon), enable amd64 emulation in settings (Rosetta / x86_64 emulation), then re-run:
+
+```bash
+docker run --rm --platform=linux/amd64 alpine uname -m
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-all-rtl
+```
+
 GL (recommended one by one on low-memory VMs):
 
 ```bash
