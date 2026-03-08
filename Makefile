@@ -186,7 +186,7 @@ final: check-caravel
 		export PDK=$(PDK) && \
 		export PDK_ROOT=$(PDK_ROOT) && \
 		export MCW_ROOT=$(MCW_ROOT) && \
-		python3 $(CARAVEL_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
+		python3 $(UPRJ_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
 	@cp -f "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" "$(UPRJ_ROOT)/gds/caravel_$(USER_ID).gds"
 
 .PHONY: final-fast
@@ -209,7 +209,7 @@ final-fast: check-caravel
 	@export PDK=$(PDK) && \
 		export PDK_ROOT=$(PDK_ROOT) && \
 		export MCW_ROOT=$(MCW_ROOT) && \
-		python3 $(CARAVEL_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
+		python3 $(UPRJ_ROOT)/scripts/compositor.py $(USER_ID) $(PROJECT) $(UPRJ_ROOT) $(CARAVEL_ROOT)/mag $(CARAVEL_ROOT)/gds -keep
 	@if [ "$$(stat -c%s "$(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds" 2>/dev/null || echo 0)" -lt 1000000000 ]; then \
 		echo "ERROR: final GDS is too small/invalid at $(CARAVEL_ROOT)/gds/caravel_$(USER_ID).gds"; \
 		exit 1; \
