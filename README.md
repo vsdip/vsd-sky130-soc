@@ -2,6 +2,64 @@
 
 This repository is based on `caravel_user_project` and is set up so users can run the flow with `vsdmake`.
 
+## Pre-requisites (Ubuntu/Debian)
+
+Install base tools:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  git make curl wget ca-certificates \
+  build-essential pkg-config \
+  python3 python3-pip python3-venv python3-dev \
+  libffi-dev libssl-dev
+```
+
+Install Docker (required by OpenLane/cocotb/precheck flows):
+
+```bash
+sudo apt-get install -y docker.io
+sudo systemctl enable --now docker
+sudo usermod -aG docker $USER
+newgrp docker
+docker --version
+docker run --rm hello-world
+```
+
+Install Magic (recommended `>= 8.3.411`):
+
+```bash
+sudo apt-get install -y \
+  m4 tcsh csh libx11-dev tcl-dev tk-dev \
+  libcairo2-dev mesa-common-dev libglu1-mesa-dev
+
+cd ~
+git clone --depth=1 https://github.com/RTimothyEdwards/magic.git
+cd magic
+./configure
+make -j"$(nproc)"
+sudo make install
+```
+
+Verify Magic version:
+
+```bash
+magic -dnull -noconsole <<'EOF'
+version
+quit -noprompt
+EOF
+```
+
+If you are on a low-memory VM, configure swap before long GL/final runs:
+
+```bash
+sudo fallocate -l 24G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
 ## System Requirements (Recommended)
 
 - Disk space:
