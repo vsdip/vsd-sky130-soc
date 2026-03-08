@@ -50,7 +50,7 @@ quit -noprompt
 EOF
 ```
 
-If you are on a low-memory VM, configure swap before long GL/final runs:
+[OPTIONAL, NEEDED ONLY FOR GLS STAGE] If you are on a low-memory VM, configure swap before long GL/final runs:
 
 ```bash
 sudo fallocate -l 24G /swapfile
