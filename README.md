@@ -246,3 +246,15 @@ This repository intentionally includes a small set of technical deltas from upst
    Why:
    - Keeps repository lean and source-focused.
    - Prevents accidental commits of large machine-generated outputs.
+
+8. Stabilized final GDS composition by vendoring/updating `compositor.py`
+   File: `scripts/compositor.py` (used by top-level `Makefile` targets `final` and `final-fast`)
+   What changed:
+   - Added deterministic preflight checks for required GDS inputs.
+   - Switched to a vendor-only compose path that merges explicit GDS sources instead of relying on fragile MAG hierarchy resolution.
+   - Ensured the correct top cell is active before final stream-out.
+   - Added safer magic invocation/error handling for reproducibility.
+   Why:
+   - Fixes intermittent `Calma output error: Can't find GDS file ...` failures seen across host environments.
+   - Prevents generation of tiny/invalid `caravel_<USER_ID>.gds` outputs when compose context is wrong.
+   - Makes `final/final-fast` reproducible on fresh setups without patching nested `caravel/` sources.
