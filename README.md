@@ -2,6 +2,20 @@
 
 This repository is based on `caravel_user_project` and is set up so users can run the flow with `vsdmake`.
 
+## System Requirements (Recommended)
+
+- Disk space:
+  - Minimum: `120 GB` free
+  - Recommended: `180 GB+` free
+- RAM:
+  - Minimum: `8 GB` (slow)
+  - Recommended: `16 GB+`
+- Swap (especially for low-RAM VMs): `16–24 GB`
+
+Heavy steps:
+- Gate-level cocotb (`*-gl`)
+- Full-chip generation (`ship`, `fill`, `final`)
+
 ## 1) Clone
 
 ```bash
