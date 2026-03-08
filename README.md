@@ -19,8 +19,8 @@ Heavy steps:
 ## 1) Clone
 
 ```bash
-git clone https://github.com/vsdip/vsd-scl180-soc.git
-cd vsd-scl180-soc
+git clone https://github.com/vsdip/vsd-sky130-soc.git
+cd vsd-sky130-soc
 ```
 
 ## 2) Use `vsdmake` command
