@@ -140,6 +140,23 @@ RTL:
 vsdmake cocotb-verify-all-rtl
 ```
 
+Cocotb docker portability note (Linux/macOS, x86_64/arm64):
+
+- By default, docker selects platform automatically.
+- If needed, force platform explicitly:
+
+```bash
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-all-rtl
+```
+
+- Quick runtime check (required before cocotb runs):
+
+```bash
+docker run --rm --platform=linux/amd64 alpine uname -m
+```
+
+If this fails with `exec format error` on arm64, enable amd64 emulation in Docker (or run cocotb on x86_64 host/CI).
+
 GL (recommended one by one on low-memory VMs):
 
 ```bash
