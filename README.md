@@ -182,13 +182,43 @@ docker run --rm --platform=linux/amd64 alpine uname -m
 COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-all-rtl
 ```
 
-GL (recommended one by one on low-memory VMs):
+GL checklist (recommended one-by-one on low-memory VMs):
+
+1. Verify amd64 container runtime works (required on arm64 hosts):
 
 ```bash
-vsdmake cocotb-verify-counter_wb-gl
-vsdmake cocotb-verify-counter_la-gl
-vsdmake cocotb-verify-counter_la_reset-gl
-vsdmake cocotb-verify-counter_la_clk-gl
+docker run --rm --platform=linux/amd64 alpine uname -m
+```
+
+Expected output: `x86_64`
+
+2. If step 1 fails with `exec format error`, enable emulation (Linux Docker engine):
+
+```bash
+docker run --privileged --rm tonistiigi/binfmt --install amd64
+docker run --rm --platform=linux/amd64 alpine uname -m
+```
+
+3. Ensure enough swap for GL runs (recommended 24G to 32G on low-RAM VMs):
+
+```bash
+sudo swapoff -a
+sudo rm -f /swapfile
+sudo fallocate -l 32G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+free -h
+```
+
+4. Run GL tests one at a time:
+
+```bash
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-counter_wb-gl
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-counter_la-gl
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-counter_la_reset-gl
+COCOTB_DOCKER_PLATFORM=linux/amd64 vsdmake cocotb-verify-counter_la_clk-gl
 ```
 
 Precheck:
